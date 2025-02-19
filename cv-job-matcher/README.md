@@ -1,12 +1,11 @@
 # CV Job Matcher
 
-CV Job Matcher is an Agentic AI application that reads your CV and finds relevant job openings from the web. This project leverages natural language processing and web scraping to match your skills and experiences with the best job opportunities available online.
+CV Job Matcher is an Agentic AI application created using crewai agentic platform (https://www.crewai.com/) that reads your CV and finds relevant job openings from the web. This project leverages natural language processing and web scraping to match your skills and experiences with the best job opportunities available online.
 
 ## Features
 
 - **Agent 1 (CV Parsing)**: Agent 1 extracts relevant information from your CV.
 - **Agent 2 (Job Matching)**: Agent 2 Searches the internet for job openings that match your profile.
-- **Customizable**: Allows customization of search criteria and preferences.
 
 ## Installation
 
