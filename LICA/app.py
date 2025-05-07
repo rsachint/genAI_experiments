@@ -1,80 +1,49 @@
-from flask import Flask, render_template, request, jsonify
-import os
-import base64
-import requests
-from dotenv import load_dotenv
+from flask import Flask, request, jsonify
+import base64, io, os, requests
 
-app = Flask(__name__)
-load_dotenv()
-API_KEY = os.getenv("SARVAM_API_KEY")
+app = Flask(__name__, static_folder='public', static_url_path='')
+API_KEY = os.getenv('SARVAM_API_KEY')
+STT_URL = 'https://api.sarvam.ai/speech-to-text'
+STT_TURL = 'https://api.sarvam.ai/speech-to-text-translate'
+TTS_URL = 'https://api.sarvam.ai/text-to-speech'
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    return app.send_static_file('index.html')
 
 @app.route('/translate_play', methods=['POST'])
-def translate_and_play():
-    data = request.get_json()
+def translate_play():
+    data = request.get_json(force=True)
     role = data.get('role')
     audio_b64 = data.get('audio')
+    if role not in ('teacher','student') or not audio_b64:
+        return jsonify({'error':'Missing role/audio'}),400
+    audio_bytes = base64.b64decode(audio_b64)
 
-    if not API_KEY or not audio_b64 or not role:
-        return jsonify({'error': 'Missing data'}), 400
+    # STT
+    files = {'file':('input.wav',io.BytesIO(audio_bytes),'audio/wav')}
+    headers = {'API-Subscription-Key':API_KEY}
+    stt = requests.post(STT_URL,headers=headers,files=files, data={'language_code':'hi-IN' if role=='teacher' else 'pa-IN'})
+    stt.raise_for_status()
+    transcript = stt.json().get('transcript','')
 
-    # Save audio to temp file
-    audio_data = base64.b64decode(audio_b64.split(',')[1])
-    tmp_path = f"/tmp/{role}_input.wav"
-    with open(tmp_path, "wb") as f:
-        f.write(audio_data)
+    # Translate via STT-TTT API
+    files2={'file':('input.wav',io.BytesIO(audio_bytes),'audio/wav')}
+    data2={'model':'saarikav2','target_language_code':'pa-IN' if role=='teacher' else 'hi-IN'}
+    tr = requests.post(STT_TURL,headers=headers,files=files2,data=data2)
+    tr.raise_for_status()
+    translated = tr.json().get('transcript','')
 
-    # Step 1: STT (Sarvam API)
-    stt_response = requests.post(
-        "https://api.sarvam.ai/speech-to-text",
-        headers={"API-Subscription-Key": API_KEY},
-        files={"file": ("audio.wav", open(tmp_path, "rb"), "audio/wav")},
-        data={"model": "saarika:v2", "language_code": "unknown"}
-    ).json()
+    # TTS
+    payload={'text':translated,'target_language_code':'pa-IN' if role=='teacher' else 'hi-IN','speaker':'anushka' if role=='teacher' else 'karun'}
+    tts = requests.post(TTS_URL,headers={'Content-Type':'application/json','API-Subscription-Key':API_KEY},json=payload)
+    tts.raise_for_status()
+    audios=tts.json().get('audios',[])
+    if not audios: return jsonify({'error':'No audio'}),500
 
-    transcript = stt_response.get("transcript", "")
+    return jsonify({'original':transcript,'translated':translated,'audio':audios[0]})
 
-    # Step 2: Define language direction
-    if role == "teacher":
-        src, tgt, speaker, target_box = "hi-IN", "pa-IN", "anushka", "student"
-    else:
-        src, tgt, speaker, target_box = "pa-IN", "hi-IN", "karun", "teacher"
-
-    # Step 3: Translate (Sarvam)
-    translation = requests.post(
-        "https://api.sarvam.ai/translate",
-        headers={"API-Subscription-Key": API_KEY, "Content-Type": "application/json"},
-        json={
-            "input": transcript,
-            "source_language_code": src,
-            "target_language_code": tgt,
-            "mode": "formal"
-        }
-    ).json().get("translated_text", "")
-
-    # Step 4: TTS (Sarvam)
-    tts_response = requests.post(
-        "https://api.sarvam.ai/text-to-speech",
-        headers={"API-Subscription-Key": API_KEY, "Content-Type": "application/json"},
-        json={
-            "text": translation,
-            "target_language_code": tgt,
-            "speaker": speaker
-        }
-    ).json()
-
-    audio_out_b64 = tts_response.get("audios", [""])[0]
-
-    return jsonify({
-        "original": transcript,
-        "translated": translation,
-        "audio": audio_out_b64,
-        "target_box": target_box
-    })
-
-if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5000)
-
+if __name__=='__main__':
+    port = int(os.getenv('PORT',8000))
+    app.run(host='0.0.0.0',port=port)
