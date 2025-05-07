@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>🎙️ LICA Teacher Assist</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 2em;
+      background-color: #f4f6f8;
+    }
+    h1 {
+      font-size: 28px;
+      margin-bottom: 1.5em;
+    }
+    .section {
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 1.5em;
+      margin: 1em auto;
+      width: 60%;
+      background-color: #fff;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    button {
+      padding: 0.5em 1em;
+      font-size: 16px;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .output {
+      margin-top: 1em;
+      font-size: 16px;
+    }
+    .status {
+      margin-top: 0.5em;
+      font-style: italic;
+      color: #888;
+    }
+    .speaker {
+      font-size: 18px;
+      margin-left: 8px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎙️ LICA Teacher Assist</h1>
+
+  <!-- Teacher Section -->
+  <div class="section" id="teacher-section">
+    <h2>🧑‍🏫 Teacher (Hindi)</h2>
+    <button onclick="recordAudio('teacher')">🎤 Speak</button>
+    <div class="status" id="teacher-status"></div>
+    <div class="output">
+      <p id="teacher-original"><strong>Original:</strong> </p>
+    </div>
+  </div>
+
+  <!-- Student Section -->
+  <div class="section" id="student-section">
+    <h2>🧑‍🎓 Student (Punjabi)</h2>
+    <button onclick="recordAudio('student')">🎤 Speak</button>
+    <div class="status" id="student-status"></div>
+    <div class="output">
+      <p id="student-original"><strong>Original:</strong> </p>
+    </div>
+  </div>
+
+<script>
+  let mediaRecorder;
+  let audioChunks = [];
+
+  function recordAudio(role) {
+    const status = document.getElementById(`${role}-status`);
+    status.innerText = "🎙️ Recording...";
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(stream => {
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.start();
+        audioChunks = [];
+
+        mediaRecorder.addEventListener("dataavailable", event => {
+          audioChunks.push(event.data);
+        });
+
+        mediaRecorder.addEventListener("stop", () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64Audio = reader.result;
+            sendToServer(base64Audio, role);
+          };
+          reader.readAsDataURL(audioBlob);
+        });
+
+        setTimeout(() => {
+          mediaRecorder.stop();
+        }, 5000); // 5 seconds
+      });
+  }
+
+  function sendToServer(audioData, role) {
+    const status = document.getElementById(`${role}-status`);
+    status.innerText = "🔄 Translating...";
+
+    fetch("/translate_play", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ audio: audioData, role: role })
+    })
+    .then(response => response.json())
+    .then(data => {
+      status.innerText = ""; // clear status
+
+      const original = data.original || "N/A";
+      const translated = data.translated || "N/A";
+      const audioB64 = data.audio || "";
+
+      // Show original in speaker's section
+      const originalP = document.getElementById(`${role}-original`);
+      originalP.innerHTML = `<strong>Original:</strong> ${original}`;
+
+      // Show translation + audio in opposite section
+      const target = role === "teacher" ? "student" : "teacher";
+      const targetOutput = document.getElementById(`${target}-original`);
+      targetOutput.innerHTML = `
+        <strong>Original:</strong> ${original}<br>
+        <strong>Translated:</strong> ${translated}
+        <span class="speaker" onclick="playAudio('${audioB64}')">🔊</span>
+      `;
+
+      // Auto-play the audio
+      playAudio(audioB64);
+    })
+    .catch(error => {
+      status.innerText = "❌ Error during processing.";
+      console.error("Error:", error);
+    });
+  }
+
+  function playAudio(audioB64) {
+    const audio = new Audio(`data:audio/mp3;base64,${audioB64}`);
+    audio.play();
+  }
+</script>
+</body>
+</html>
+
