@@ -1,0 +1,7 @@
+Flask
+flask-socketio
+python-dotenv
+requests
+pydub
+eventlet
+gunicorn
