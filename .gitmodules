@@ -1,0 +1,3 @@
+[submodule "LICA"]
+	path = LICA
+	url = https://github.com/rsachint/LICA.git
